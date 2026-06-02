@@ -1,0 +1,36 @@
+# Compiled binaries
+schema_dump/schema_dump
+schema_dump/schema_dump_amd64
+schema_dump/schema_dump_amd64_generated.s
+schema_dump/schema_dump_linux_amd64
+schema_dump/schema_dump_linux_amd64.s
+schema_dump/schema_dump_c
+schema_dump/schema_dump.o
+compare_schemas/compare_schemas
+compare_schemas/compare_schemas_v2
+apply_schema/apply_schema
+apply_schema/apply_schema_v2
+schema_compare/schema_compare
+schema_sync_final/schema_sync_final
+schema_sync_final/schema_sync_complete
+schema_sync_final/schema_sync_v2
+schema_sync_final/schema_sync_working
+schema_sync_final/schema_apply
+schema_sync_final/schema_sync
+schema_sync_final/schema_sync_amd64
+schema_sync_final/schema_sync_c
+schema_delta
+
+# OpenEdge runtime artifacts
+*.e
+*.lk
+*.lg
+procore.*
+protrace.*
+*.df
+
+# Object files
+*.o
+
+# Assembly output
+*.s

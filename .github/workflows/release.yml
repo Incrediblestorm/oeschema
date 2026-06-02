@@ -1,0 +1,73 @@
+name: Build and Release C Tools
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y gcc rpm
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Compile C tools
+        run: |
+          gcc -O2 -o schema_dump      schema_dump/schema_dump.c
+          gcc -O2 -o compare_schemas  compare_schemas/compare_schemas.c
+          gcc -O2 -o apply_schema     apply_schema/apply_schema.c
+          gcc -O2 -o schema_sync      schema_sync_final/schema_sync_final.c
+
+      - name: Create binary tarball
+        run: |
+          mkdir -p dist/oebase-tools-${{ steps.version.outputs.VERSION }}/bin
+          cp schema_dump compare_schemas apply_schema schema_sync \
+            dist/oebase-tools-${{ steps.version.outputs.VERSION }}/bin/
+          tar -czf oebase-tools-${{ steps.version.outputs.VERSION }}-linux-x86_64.tar.gz \
+            -C dist oebase-tools-${{ steps.version.outputs.VERSION }}
+
+      - name: Set up RPM build tree and source tarball
+        run: |
+          mkdir -p ~/rpmbuild/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
+          mkdir -p /tmp/oebase-tools-${{ steps.version.outputs.VERSION }}
+          cp schema_dump/schema_dump.c \
+             compare_schemas/compare_schemas.c \
+             apply_schema/apply_schema.c \
+             schema_sync_final/schema_sync_final.c \
+             /tmp/oebase-tools-${{ steps.version.outputs.VERSION }}/
+          tar -czf ~/rpmbuild/SOURCES/oebase-tools-${{ steps.version.outputs.VERSION }}.tar.gz \
+            -C /tmp oebase-tools-${{ steps.version.outputs.VERSION }}
+
+      - name: Build RPM
+        run: |
+          rpmbuild -ba packaging/oebase-tools.spec \
+            --define "_version ${{ steps.version.outputs.VERSION }}" \
+            --define "_release 1"
+
+      - name: Locate RPM artifact
+        id: rpm
+        run: |
+          RPM_PATH=$(find ~/rpmbuild/RPMS -name "*.rpm" | head -1)
+          echo "RPM_PATH=$RPM_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: oebase-tools ${{ github.ref_name }}
+          files: |
+            oebase-tools-${{ steps.version.outputs.VERSION }}-linux-x86_64.tar.gz
+            ${{ steps.rpm.outputs.RPM_PATH }}
