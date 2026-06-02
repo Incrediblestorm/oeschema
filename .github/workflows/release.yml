@@ -27,15 +27,16 @@ jobs:
 
       - name: Compile C tools
         run: |
-          gcc -O2 -o schema_dump      schema_dump/schema_dump.c
-          gcc -O2 -o compare_schemas  compare_schemas/compare_schemas.c
-          gcc -O2 -o apply_schema     apply_schema/apply_schema.c
-          gcc -O2 -o schema_sync      schema_sync_final/schema_sync_final.c
+          mkdir -p build/bin
+          gcc -O2 -o build/bin/schema_dump      schema_dump/schema_dump.c
+          gcc -O2 -o build/bin/compare_schemas  compare_schemas/compare_schemas.c
+          gcc -O2 -o build/bin/apply_schema     apply_schema/apply_schema.c
+          gcc -O2 -o build/bin/schema_sync      schema_sync_final/schema_sync_final.c
 
       - name: Create binary tarball
         run: |
           mkdir -p dist/oebase-tools-${{ steps.version.outputs.VERSION }}/bin
-          cp schema_dump compare_schemas apply_schema schema_sync \
+          cp build/bin/schema_dump build/bin/compare_schemas build/bin/apply_schema build/bin/schema_sync \
             dist/oebase-tools-${{ steps.version.outputs.VERSION }}/bin/
           tar -czf oebase-tools-${{ steps.version.outputs.VERSION }}-linux-x86_64.tar.gz \
             -C dist oebase-tools-${{ steps.version.outputs.VERSION }}
