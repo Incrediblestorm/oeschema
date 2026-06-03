@@ -53,11 +53,27 @@ jobs:
           tar -czf ~/rpmbuild/SOURCES/oebase-tools-${{ steps.version.outputs.VERSION }}.tar.gz \
             -C /tmp oebase-tools-${{ steps.version.outputs.VERSION }}
 
+      - name: Determine RPM build number
+        id: build_number
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RELEASE_NUM=1
+          CURRENT=$(gh release view "$GITHUB_REF_NAME" --json assets \
+            --jq '.assets[].name' 2>/dev/null \
+            | grep -E '^oebase-tools-${{ steps.version.outputs.VERSION }}-[0-9]+' \
+            | sed 's/^oebase-tools-[^-]*-\([0-9]\+\)[^0-9].*/\1/' \
+            | sort -n | tail -1)
+          if [ -n "$CURRENT" ]; then
+            RELEASE_NUM=$((CURRENT + 1))
+          fi
+          echo "RELEASE_NUM=$RELEASE_NUM" >> "$GITHUB_OUTPUT"
+
       - name: Build RPM
         run: |
           rpmbuild -ba packaging/oebase-tools.spec \
             --define "_version ${{ steps.version.outputs.VERSION }}" \
-            --define "_release 1"
+            --define "_release ${{ steps.build_number.outputs.RELEASE_NUM }}"
 
       - name: Locate RPM artifact
         id: rpm
