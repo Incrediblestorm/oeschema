@@ -1,4 +1,4 @@
-Name:           oebase-tools
+Name:           oeschema-tools
 Version:        %{_version}
 Release:        %{_release}%{?dist}
 Summary:        OpenEdge database schema management tools
