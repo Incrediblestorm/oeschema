@@ -44,14 +44,14 @@ jobs:
       - name: Set up RPM build tree and source tarball
         run: |
           mkdir -p ~/rpmbuild/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
-          mkdir -p /tmp/oebase-tools-${{ steps.version.outputs.VERSION }}
+          mkdir -p /tmp/oeschema-tools-${{ steps.version.outputs.VERSION }}
           cp schema_dump/schema_dump.c \
              compare_schemas/compare_schemas.c \
              apply_schema/apply_schema.c \
              schema_sync_final/schema_sync_final.c \
-             /tmp/oebase-tools-${{ steps.version.outputs.VERSION }}/
-          tar -czf ~/rpmbuild/SOURCES/oebase-tools-${{ steps.version.outputs.VERSION }}.tar.gz \
-            -C /tmp oebase-tools-${{ steps.version.outputs.VERSION }}
+             /tmp/oeschema-tools-${{ steps.version.outputs.VERSION }}/
+          tar -czf ~/rpmbuild/SOURCES/oeschema-tools-${{ steps.version.outputs.VERSION }}.tar.gz \
+            -C /tmp oeschema-tools-${{ steps.version.outputs.VERSION }}
 
       - name: Determine RPM build number
         id: build_number
@@ -71,7 +71,7 @@ jobs:
 
       - name: Build RPM
         run: |
-          rpmbuild -ba packaging/oebase-tools.spec \
+          rpmbuild -ba packaging/oeschema-tools.spec \
             --define "_version ${{ steps.version.outputs.VERSION }}" \
             --define "_release ${{ steps.build_number.outputs.RELEASE_NUM }}"
 
