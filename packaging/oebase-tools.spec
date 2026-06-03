@@ -6,8 +6,6 @@ License:        MIT
 BuildArch:      x86_64
 Source0:        %{name}-%{version}.tar.gz
 
-BuildRequires:  glibc-static
-
 %description
 Command-line tools for managing OpenEdge database schemas.
 Provides schema dumping, comparison, delta generation, and
@@ -36,5 +34,5 @@ install -m 0755 schema_sync     %{buildroot}%{_bindir}/schema_sync
 %{_bindir}/schema_sync
 
 %changelog
-* Mon Jun 02 2026 Incrediblestorm <noreply@github.com> - %{_version}-%{_release}
+* Tue Jun 02 2026 Incrediblestorm <noreply@github.com> - %{_version}-%{_release}
 - Initial package release
