@@ -48,6 +48,13 @@ char* get_codepage_from_startup_pf(const char *dlc) {
     return NULL;
 }
 
+/* Return 1 if the database broker is running (lock file present), 0 otherwise */
+static int db_is_running(const char *db_path) {
+    char lk_path[512];
+    snprintf(lk_path, sizeof(lk_path), "%s.lk", db_path);
+    return (access(lk_path, F_OK) == 0);
+}
+
 #define ABL_CODE \
 "DEFINE VARIABLE cTables AS CHARACTER NO-UNDO INITIAL \"ALL\".\n" \
 "DEFINE VARIABLE cOutFile AS CHARACTER NO-UNDO.\n" \
@@ -70,6 +77,9 @@ int main(int argc, char *argv[]) {
     
     char *codepage = get_codepage_from_startup_pf(dlc);
     const char *cp_param = codepage ? codepage : "";
+
+    /* Use single-user mode only when the broker is not running */
+    const char *single_user = db_is_running(db_path) ? "" : "-1 ";
     
     // Create temporary file for ABL procedure
     char tmp_path[64];
@@ -99,8 +109,8 @@ int main(int argc, char *argv[]) {
     char command[2048];
     snprintf(command, sizeof(command),
         "export DLC=%s PROPATH=%s/tty PROTERMCAP=%s/protermcap TERM=xterm; "
-        "%s/bin/_progres -db %s -1 -b -p %s -param 'ALL|%s|%s' 2>&1",
-        dlc, dlc, dlc, dlc, db_path, tmp_path, df_path, cp_param);
+        "%s/bin/_progres -db %s %s-b -p %s -param 'ALL|%s|%s' 2>&1",
+        dlc, dlc, dlc, dlc, db_path, single_user, tmp_path, df_path, cp_param);
     
     // Execute command
     int ret = system(command);
