@@ -76,6 +76,50 @@ int db_has_server(const char *db_path) {
     return access(lk_path, F_OK) == 0;
 }
 
+/*
+ * Shut down a running database broker using proshut -by.
+ * Waits up to 30 seconds for the broker to stop.
+ * Returns 1 on success, 0 on failure.
+ */
+static int shutdown_db(const char *dlc, const char *db_path) {
+    char command[4096];
+    snprintf(command, sizeof(command),
+        "export DLC=%s; %s/bin/proshut %s -by 2>&1",
+        dlc, dlc, db_path);
+    system(command);
+
+    /* Wait for .lk file to disappear (up to 30 seconds) */
+    for (int i = 0; i < 30; i++) {
+        if (!db_has_server(db_path))
+            return 1;
+        sleep(1);
+    }
+    fprintf(stderr, "✗ Database did not shut down within 30 seconds: %s\n", db_path);
+    return 0;
+}
+
+/*
+ * Restart a database broker using proserve.
+ * Returns 1 on success, 0 on failure.
+ */
+static int restart_db(const char *dlc, const char *db_path) {
+    char command[4096];
+    snprintf(command, sizeof(command),
+        "export DLC=%s; %s/bin/proserve %s 2>&1",
+        dlc, dlc, db_path);
+    int ret = system(command);
+
+    /* Wait up to 10 seconds for .lk to appear */
+    for (int i = 0; i < 10; i++) {
+        if (db_has_server(db_path))
+            return 1;
+        sleep(1);
+    }
+    (void)ret;
+    fprintf(stderr, "✗ Database did not come back online within 10 seconds: %s\n", db_path);
+    return 0;
+}
+
 // Returns 1 if the table name is a temp-table by convention (tt prefix).
 static int is_temp_table(const char *name) {
     return (strncasecmp(name, "tt", 2) == 0);
@@ -218,7 +262,9 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "ERROR: Target database does not exist: %s\n", target_db);
         return 1;
     }
-    
+
+    int was_running = db_has_server(target_db);
+
     printf("\n");
     printf("╔═══════════════════════════════════════════════════╗\n");
     printf("║   OpenEdge Schema Synchronization Tool           ║\n");
@@ -226,7 +272,7 @@ int main(int argc, char *argv[]) {
     printf("Schema file:     %s\n", schema_file);
     printf("Target database: %s\n", target_db);
     printf("Codepage:        %s\n", cp);
-    printf("Server running:  %s\n\n", db_has_server(target_db) ? "YES" : "NO");
+    printf("Server running:  %s\n\n", was_running ? "YES" : "NO");
     
     char command[4096];
     char temp_db[256];
@@ -304,14 +350,17 @@ int main(int argc, char *argv[]) {
     printf("STEP 3: Generating schema delta\n");
     printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
     printf("Comparing: %s (desired) vs %s (current)\n\n", temp_db, target_db);
-    
+
+    /* Connect to target without -1 if broker is running, with -1 if offline */
+    const char *dictdb2_flags = db_has_server(target_db) ? "" : "-1";
+
     snprintf(script_file, sizeof(script_file), "/tmp/delta_%d.p", getpid());
     fp = fopen(script_file, "w");
     if (fp) {
         fprintf(fp,
             "DEFINE VARIABLE hdump AS HANDLE NO-UNDO.\n"
             "OUTPUT TO /tmp/delta_log_%d.txt.\n"
-            "CONNECT VALUE(\"%s\") -ld DICTDB2 -1 NO-ERROR.\n"
+            "CONNECT VALUE(\"%s\") -ld DICTDB2 %s NO-ERROR.\n"
             "IF ERROR-STATUS:ERROR THEN DO:\n"
             "    MESSAGE \"✗ Failed to connect to current database\".\n"
             "    OUTPUT CLOSE.\n"
@@ -335,16 +384,16 @@ int main(int argc, char *argv[]) {
             "DELETE OBJECT hdump NO-ERROR.\n"
             "DISCONNECT DICTDB2.\n"
             "OUTPUT CLOSE.\n",
-            getpid(), target_db, delta_file, cp);
+            getpid(), target_db, dictdb2_flags, delta_file, cp);
         fclose(fp);
-        
+
         snprintf(command, sizeof(command),
             "export DLC=%s PROPATH=%s/tty PROTERMCAP=%s/protermcap TERM=xterm; "
             "%s/bin/_progres -db %s -1 -b -p %s 2>&1 | grep -v '^$'",
             dlc, dlc, dlc, dlc, temp_db, script_file);
-        
+
         system(command);
-        
+
         // Show log
         char log_path[256];
         snprintf(log_path, sizeof(log_path), "/tmp/delta_log_%d.txt", getpid());
@@ -404,6 +453,24 @@ int main(int argc, char *argv[]) {
 
     /* Step 4 applies the filtered delta (safe even when blocked_count == 0) */
     const char *apply_file = filtered_file;
+
+    // ===========================================
+    // STEP 3c: Shut down broker if running
+    // ===========================================
+    if (db_has_server(target_db)) {
+        printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+        printf("STEP 3c: Shutting down database broker\n");
+        printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+        printf("Running: proshut %s -by\n\n", target_db);
+        if (!shutdown_db(dlc, target_db)) {
+            fprintf(stderr, "✗ Cannot proceed: database broker is still running.\n");
+            snprintf(command, sizeof(command), "rm -f %s.* 2>&1", temp_db);
+            system(command);
+            unlink(filtered_file);
+            return 1;
+        }
+        printf("✓ Database broker stopped\n\n");
+    }
 
     // ===========================================
     // STEP 4: Apply delta to target database
@@ -467,6 +534,20 @@ int main(int argc, char *argv[]) {
     system(command);
     unlink(filtered_file);
     printf("✓ Temporary database removed\n\n");
+
+    // ===========================================
+    // STEP 6: Restart broker if it was running
+    // ===========================================
+    if (was_running) {
+        printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+        printf("STEP 6: Restarting database broker\n");
+        printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+        printf("Running: proserve %s\n\n", target_db);
+        if (restart_db(dlc, target_db))
+            printf("✓ Database broker restarted\n\n");
+        else
+            printf("⚠ Database broker did not confirm online — check manually\n\n");
+    }
     
     printf("╔═══════════════════════════════════════════════════╗\n");
     printf("║   Schema Synchronization Process Complete        ║\n");
